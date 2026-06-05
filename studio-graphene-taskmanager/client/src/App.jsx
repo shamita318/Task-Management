@@ -12,16 +12,20 @@ function App() {
   const [dueDate, setDueDate] = useState('');
   const [editingTask, setEditingTask] = useState(null);
   const [error, setError] = useState('');
+  
 
   // --- Fetch Tasks ---
-  const fetchTasks = async () => {
+ const fetchTasks = () => {
     try {
-      const response = await axios.get(API_URL);
-      setTasks(response.data);
-      setError('');
+      const savedTasks = localStorage.getItem('tasks');
+      if (savedTasks) {
+        setTasks(JSON.parse(savedTasks));
+      } else {
+        setTasks([]);
+      }
     } catch (err) {
-      console.error('Error fetching tasks:', err);
-      setError('Could not connect to the backend server.');
+      console.error('Error parsing tasks from local browser cache:', err);
+      setError('Failed to load tasks from local storage.');
     }
   };
 
@@ -45,35 +49,41 @@ function App() {
       dueDate: dueDate || null,
     };
 
-    try {
-      if (editingTask) {
-        // Update existing task
-        await axios.put(`${API_URL}/${editingTask.id}`, taskData);
-        setEditingTask(null);
-      } else {
-        // Create brand new task
-        await axios.post(API_URL, taskData);
-      }
+  try {
+      // 1. Format the new task object
+      const newTask = {
+        ...taskData,
+        id: Date.now().toString() // Generates a unique tracking key natively
+      };
+
+      // 2. Fetch current tasks array, safely append the new item, and push it to state
+      const currentTasks = localStorage.getItem('tasks') ? JSON.parse(localStorage.getItem('tasks')) : [];
+      const updatedTasks = [...currentTasks, newTask];
       
-      // Clear inputs & refresh list
-      setTitle('');
-      setDescription('');
-      setDueDate('');
-      setError('');
-      fetchTasks();
+      setTasks(updatedTasks);
+      localStorage.setItem('tasks', JSON.stringify(updatedTasks));
+
+      // 3. Clear your form states cleanly right here (e.g., setTitle(''), setDescription(''))
+      // If you have a task creation success callback function, call it here!
+
     } catch (err) {
-      console.error('Error saving task:', err);
-      setError(err.response?.data?.error || 'An error occurred while saving the task.');
+      console.error('Error saving task entry:', err);
+      setError('Could not save your task to local storage.');
     }
-  };
 
   // --- Toggle Complete State ---
-  const toggleComplete = async (task) => {
+ const toggleComplete = (task) => {
     try {
-      await axios.put(`${API_URL}/${task.id}`, { completed: !task.completed });
-      fetchTasks();
+      const currentTasks = localStorage.getItem('tasks') ? JSON.parse(localStorage.getItem('tasks')) : [];
+      const updatedTasks = currentTasks.map(t => 
+        t.id === task.id ? { ...t, completed: !t.completed } : t
+      );
+      
+      setTasks(updatedTasks);
+      localStorage.setItem('tasks', JSON.stringify(updatedTasks));
     } catch (err) {
-      console.error('Error toggling task status:', err);
+      console.error('Error toggling task state:', err);
+      setError('Could not update task status.');
     }
   };
 
@@ -94,13 +104,21 @@ function App() {
   };
 
   // --- Delete Task ---
-  const handleDelete = async (id) => {
+const handleDelete = (id) => {
     if (window.confirm('Are you sure you want to delete this task?')) {
       try {
-        await axios.delete(`${API_URL}/${id}`);
-        fetchTasks();
+        // 1. Pull the current dataset out of the browser memory
+        const currentTasks = localStorage.getItem('tasks') ? JSON.parse(localStorage.getItem('tasks')) : [];
+        
+        // 2. Filter out the specific task matching the targeting ID
+        const updatedTasks = currentTasks.filter(task => task.id !== id);
+        
+        // 3. Save the pruned array back down and sync your React state layout
+        setTasks(updatedTasks);
+        localStorage.setItem('tasks', JSON.stringify(updatedTasks));
       } catch (err) {
-        console.error('Error deleting task:', err);
+        console.error('Error deleting task entry:', err);
+        setError('Could not delete your task from local storage.');
       }
     }
   };
